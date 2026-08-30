@@ -12,7 +12,7 @@ Package managers are adding good protections (cooldown windows, script approval,
 
 `ds` narrows that by running things like `npm install` or `composer require` inside a [nono](https://nono.sh) sandbox with a stripped back environment and access limited to your project and the key directories the tool needs (eg, `~/.cache/uv/`).
 
-A note on platforms: built on macOS, and tested on Linux too (Ubuntu 24.04, the full private-registry flow included). Credential lookups pick the right secret store for the platform automatically: the keychain on macOS, `secret-tool` on Linux. The one hard Linux requirement is a kernel with [Landlock](https://landlock.io/) enabled, which any stock Debian or Ubuntu has. Raspberry Pi OS, sadly, does not, so no `ds` on your Pi.
+A note on platforms: built on macOS, and tested on Ubuntu 24.04 using `secret-tool` for private package registries. The one hard Linux requirement is a kernel with [Landlock](https://landlock.io/) enabled, which any regular Debian or Ubuntu has. Raspberry Pi OS, sadly, does not, so no `ds` on your rpi.
 
 ## What it does
 
@@ -26,7 +26,6 @@ Inside the sandbox, the profile:
 - strips the environment down to a short allow-list (`PATH`, `HOME`, `TERM` and a few others)
 - denies reads of credentials, keychains, browser data, shell history and shell config files
 - allows writes only to the project directory and the package managers' own cache directories
-- grants read-only access to `~/.config/herd-lite` so php/composer installed via [php.new](https://php.new) still run inside the sandbox (read-only, so an install script can't tamper with the binaries)
 - routes network traffic through nono's filtering proxy
 
 Installs run natively (no Docker, no VM), so native node modules, wheels and virtualenvs all work on the host afterwards.
@@ -35,7 +34,7 @@ Installs run natively (no Docker, no VM), so native node modules, wheels and vir
 
 - [nono](https://nono.sh) (`brew install nono` on macOS, a `.deb` on Linux), built and tested against version 0.74
 - whichever package managers you actually use (npm, bun, uv, pip, composer)
-- on Linux, for private registries only: `libsecret-tools` (for `secret-tool`) and `gnome-keyring`
+- on Linux (debian/ubuntu at least), for private registries only: `libsecret-tools` (for `secret-tool`) and `gnome-keyring`
 
 ## Getting started
 
@@ -90,7 +89,7 @@ On Linux the same entry goes in the Secret Service via `secret-tool`, which prom
 secret-tool store --label="ds-registry composer.fluxui.dev" service ds-registry account composer.fluxui.dev
 ```
 
-Desktop Linux normally has gnome-keyring running already; on a headless box you'll need to unlock it first (`gnome-keyring-daemon --replace --unlock --components=secrets`, password on stdin). You don't need to tell `ds` which platform you're on: the profile's `credential_capture` block calls `ds _cred`, which asks whichever secret store the machine actually has. If you'd rather use `pass` or one of the other backends in nono's [credential injection docs](https://nono.sh/docs/cli/features/credential-injection#linux), the `cred_lookup` function in `ds` is the one place to change.
+Desktop Linux normally has gnome-keyring running already; on a headless box you'll need to unlock it first (`gnome-keyring-daemon --replace --unlock --components=secrets`, password on stdin). `ds` understands MacOS and debian-alikes using `secret-tool`. If you'd rather use `pass` or one of the other backends in nono's [credential injection docs](https://nono.sh/docs/cli/features/credential-injection#linux), the `cred_lookup` function in `ds` is the one place to change.
 
 Each registry also needs a route in `dep-sandbox.json`. The repo ships with `composer.fluxui.dev` (the [FluxUI](https://fluxui.dev/) private registry) as a worked example; copy the `custom_credentials` block and the matching `credential_capture` entry, change the hostname, and add the hostname to `allow_domain`. `ds _cred` reads the hostname from `$NONO_REQUEST_HOST`, so it works unchanged for any registry that follows the `ds-registry` convention.
 
