@@ -19,7 +19,7 @@ A note on platforms: built on macOS, and tested on Ubuntu 24.04 using `secret-to
 - Dependency-mutating commands (`install`, `add`, `require`, `update`, `uninstall` and so on) for npm, bun, uv, pip and composer run inside the sandbox, using the `dep-sandbox.json` profile in this repo.
 - Everything else (`npm run dev`, `composer dump-autoload`, `uv run`, `pip list`) is passed straight through to the real tool, untouched.
 - `npx` and `bunx` are always sandboxed.
-- In a Lando project (`.lando.yml` present), composer commands defer to `lando composer`.
+- In a Lando project (`.lando.yml` present), composer commands defer to `lando composer` and relies on the docker setup to limit what happens.
 
 Inside the sandbox, the profile:
 
