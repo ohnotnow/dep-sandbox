@@ -6,7 +6,9 @@ It's provided 'as is' and 'seems to work for me'.  No great security guarantees 
 
 ## Why
 
-Supply chain attacks on dependency/package managers do similar things: compromised package ships and then some script grabs your `~/.ssh`, browser data, shell history and any API keys it can, then posts them somewhere you'd rather they didn't. Package managers are adding good protections (cooldown windows, script approval, registry malware scanning), but the problem remains that you miss a npmrc (or whatever) setting and `npm install` runs other people's code on your machine.
+Supply chain attacks on dependency/package managers are terribly common now. A compromised package ships and then some script grabs your `~/.ssh`, browser data, shell history and any API keys it can, then posts them somewhere you'd rather they didn't. 
+
+Package managers are adding good protections (cooldown windows, script approval, registry malware scanning), but the problem remains that you miss a npmrc (or whatever) setting or a `composer self-update` and some rando is running code on your machine.
 
 `ds` narrows that by running things like `npm install` or `composer require` inside a [nono](https://nono.sh) sandbox with a stripped back environment and access limited to your project and the key directories the tool needs (eg, `~/.cache/uv/`).
 
@@ -32,7 +34,6 @@ Installs run natively (no Docker, no VM), so native node modules, wheels and vir
 
 - [nono](https://nono.sh) (`brew install nono`), built and tested against version 0.74
 - whichever package managers you actually use (npm, bun, uv, pip, composer)
-- [Lando](https://lando.dev/), only if you use it for local development
 
 ## Getting started
 
