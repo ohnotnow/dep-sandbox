@@ -2,7 +2,7 @@
   "meta": {
     "name": "dep-sandbox",
     "version": "0.1.0",
-    "description": "Sandbox profile for dependency-mutating commands (npm/bun/uv/pip/composer install-update-require). Union of node/python/bun runtimes plus PHP composer paths, developer network allowlist plus packagist metadata, and a strict environment allow-list so exported host secrets never reach install scripts. Private registries follow the ds-registry convention: one keychain entry per host (service ds-registry, account = hostname, value = username:password) and one custom_credentials route here, so credentials are proxy-injected and never enter the sandbox."
+    "description": "Sandbox profile for dependency-mutating commands (npm/bun/uv/pip/composer install-update-require). Union of node/python/bun runtimes plus PHP composer paths, developer network allowlist plus packagist metadata, and a strict environment allow-list so exported host secrets never reach install scripts. Private registries follow the ds-registry convention: one secret store entry per host (service ds-registry, account = hostname, value = username:password - macOS keychain or Linux libsecret, dispatched by `ds _cred`) and one custom_credentials route here, so credentials are proxy-injected and never enter the sandbox."
   },
   "extends": "default",
   "groups": {
@@ -32,6 +32,9 @@
       "$XDG_CACHE_HOME/uv",
       "$HOME/Library/Caches/pip",
       "$XDG_CACHE_HOME/pip"
+    ],
+    "read": [
+      "$XDG_CONFIG_HOME/herd-lite"
     ]
   },
   "network": {
@@ -55,7 +58,7 @@
       "command": [
         "/bin/sh",
         "-c",
-        "security find-generic-password -s ds-registry -a \"$NONO_REQUEST_HOST\" -w"
+        "ds _cred \"$NONO_REQUEST_HOST\""
       ],
       "timeout_secs": 10,
       "cache_ttl_secs": 900

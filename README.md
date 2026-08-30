@@ -12,7 +12,7 @@ Package managers are adding good protections (cooldown windows, script approval,
 
 `ds` narrows that by running things like `npm install` or `composer require` inside a [nono](https://nono.sh) sandbox with a stripped back environment and access limited to your project and the key directories the tool needs (eg, `~/.cache/uv/`).
 
-A note on platforms: this was built and tested on macOS, but nothing about the design is Mac-only. nono itself supports Linux, and the only macOS-specific pieces here are the keychain lookups, which nono's [credential injection](https://nono.sh/docs/cli/features/credential-injection#linux) can source from other secret stores. I just don't have a Linux box to try it on, so a tested PR would be very welcome.
+A note on platforms: built on macOS, and tested on Linux too (Ubuntu 24.04, the full private-registry flow included). Credential lookups pick the right secret store for the platform automatically: the keychain on macOS, `secret-tool` on Linux. The one hard Linux requirement is a kernel with [Landlock](https://landlock.io/) enabled, which any stock Debian or Ubuntu has. Raspberry Pi OS, sadly, does not, so no `ds` on your Pi.
 
 ## What it does
 
@@ -26,14 +26,16 @@ Inside the sandbox, the profile:
 - strips the environment down to a short allow-list (`PATH`, `HOME`, `TERM` and a few others)
 - denies reads of credentials, keychains, browser data, shell history and shell config files
 - allows writes only to the project directory and the package managers' own cache directories
+- grants read-only access to `~/.config/herd-lite` so php/composer installed via [php.new](https://php.new) still run inside the sandbox (read-only, so an install script can't tamper with the binaries)
 - routes network traffic through nono's filtering proxy
 
 Installs run natively (no Docker, no VM), so native node modules, wheels and virtualenvs all work on the host afterwards.
 
 ## Prerequisites
 
-- [nono](https://nono.sh) (`brew install nono`), built and tested against version 0.74
+- [nono](https://nono.sh) (`brew install nono` on macOS, a `.deb` on Linux), built and tested against version 0.74
 - whichever package managers you actually use (npm, bun, uv, pip, composer)
+- on Linux, for private registries only: `libsecret-tools` (for `secret-tool`) and `gnome-keyring`
 
 ## Getting started
 
@@ -68,9 +70,9 @@ DS_VERBOSE=1 ds npm install left-pad
 
 Private registries normally mean something like an `auth.json` or credentials in your environment. `ds` avoids that by using nono's credential proxy which injects the auth at the network layer, host-side, so the sandboxed process never sees the credential at all. There is no `auth.json`, and nothing for a malicious postinstall to steal.
 
-**Note:** At the moment - this is only tested with PHP's `composer` private registries and on MacOS. 
+**Note:** At the moment - this is only tested with PHP's `composer` private registries (on macOS and Ubuntu). 
 
-The convention is one keychain entry per registry, service `ds-registry`, account set to the registry hostname, value in `username:password` format:
+The convention is one secret store entry per registry, service `ds-registry`, account set to the registry hostname, value in `username:password` format. On macOS that's the keychain:
 
 ```bash
 security add-generic-password -U -s ds-registry -a composer.fluxui.dev -w
@@ -82,9 +84,15 @@ Run without a value, it prompts with hidden input. If you already have the crede
 security add-generic-password -U -s ds-registry -a composer.fluxui.dev -w "${FLUX_USERNAME}:${FLUX_LICENSE_KEY}"
 ```
 
-On Linux there is no `security` command; swap the lookup in the profile's `credential_capture` block for your secret store of choice (`secret-tool`, `pass`, or any of the backends in nono's [credential injection docs](https://nono.sh/docs/cli/features/credential-injection#linux)).
+On Linux the same entry goes in the Secret Service via `secret-tool`, which prompts with hidden input (or reads the value from stdin):
 
-Each registry also needs a route in `dep-sandbox.json`. The repo ships with `composer.fluxui.dev` (the [FluxUI](https://fluxui.dev/) private registry) as a worked example; copy the `custom_credentials` block and the matching `credential_capture` entry, change the hostname, and add the hostname to `allow_domain`. The capture command reads the hostname from `$NONO_REQUEST_HOST`, so it works unchanged for any registry that follows the keychain convention.
+```bash
+secret-tool store --label="ds-registry composer.fluxui.dev" service ds-registry account composer.fluxui.dev
+```
+
+Desktop Linux normally has gnome-keyring running already; on a headless box you'll need to unlock it first (`gnome-keyring-daemon --replace --unlock --components=secrets`, password on stdin). You don't need to tell `ds` which platform you're on: the profile's `credential_capture` block calls `ds _cred`, which asks whichever secret store the machine actually has. If you'd rather use `pass` or one of the other backends in nono's [credential injection docs](https://nono.sh/docs/cli/features/credential-injection#linux), the `cred_lookup` function in `ds` is the one place to change.
+
+Each registry also needs a route in `dep-sandbox.json`. The repo ships with `composer.fluxui.dev` (the [FluxUI](https://fluxui.dev/) private registry) as a worked example; copy the `custom_credentials` block and the matching `credential_capture` entry, change the hostname, and add the hostname to `allow_domain`. `ds _cred` reads the hostname from `$NONO_REQUEST_HOST`, so it works unchanged for any registry that follows the `ds-registry` convention.
 
 ## Lando projects
 
@@ -94,7 +102,7 @@ Lando's container runs outside the sandbox, so private registries there still ne
 ds auth composer.fluxui.dev
 ```
 
-which writes the project's `auth.json` from the same keychain entry, and adds it to `.gitignore` if it isn't covered already.
+which writes the project's `auth.json` from the same `ds-registry` secret store entry, and adds it to `.gitignore` if it isn't covered already.
 
 ## Limitations worth knowing
 

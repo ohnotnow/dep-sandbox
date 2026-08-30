@@ -42,8 +42,39 @@ resolve_script_dir() {
 
 profile=${DS_PROFILE:-$(resolve_script_dir)/dep-sandbox.json}
 
+# Registry credentials live in the platform's secret store, one entry per
+# registry: service ds-registry, account = hostname, value username:password.
+# macOS uses the keychain; Linux uses libsecret via secret-tool.
+cred_lookup() {
+  if command -v security >/dev/null 2>&1; then
+    security find-generic-password -s ds-registry -a "$1" -w 2>/dev/null
+  elif command -v secret-tool >/dev/null 2>&1; then
+    secret-tool lookup service ds-registry account "$1" 2>/dev/null
+  else
+    return 1
+  fi
+}
+
+cred_store_hint() {
+  if command -v security >/dev/null 2>&1; then
+    echo "security add-generic-password -U -s ds-registry -a $1 -w"
+  else
+    echo "secret-tool store --label=\"ds-registry $1\" service ds-registry account $1"
+  fi
+}
+
 sandbox=no
 case $tool in
+  _cred)
+    # Internal: called host-side by the nono profile's credential_capture
+    # block with the registry hostname. Prints username:password on stdout.
+    if [ -z "${1:-}" ]; then
+      echo "usage: ds _cred <registry-hostname>" >&2
+      exit 2
+    fi
+    cred_lookup "$1" || exit 1
+    exit 0
+    ;;
   auth)
     # ds auth <registry-hostname>
     # Writes ./auth.json for a private composer registry from the keychain
@@ -54,21 +85,21 @@ case $tool in
       echo "usage: ds auth <registry-hostname>" >&2
       exit 2
     fi
-    if ! cred=$(security find-generic-password -s ds-registry -a "$auth_host" -w 2>/dev/null); then
-      echo "ds: no keychain entry for '$auth_host' (service ds-registry)." >&2
+    if ! cred=$(cred_lookup "$auth_host"); then
+      echo "ds: no secret store entry for '$auth_host' (service ds-registry)." >&2
       echo "ds: add one with (value format username:password):" >&2
-      echo "ds:   security add-generic-password -U -s ds-registry -a $auth_host -w" >&2
+      echo "ds:   $(cred_store_hint "$auth_host")" >&2
       exit 1
     fi
     cred_user=${cred%%:*}
     cred_pass=${cred#*:}
     if [ -z "$cred_user" ] || [ -z "$cred_pass" ] || [ "$cred" = "$cred_user" ]; then
-      echo "ds: keychain entry for '$auth_host' is not in username:password format." >&2
+      echo "ds: secret store entry for '$auth_host' is not in username:password format." >&2
       exit 1
     fi
     printf '{\n    "http-basic": {\n        "%s": {\n            "username": "%s",\n            "password": "%s"\n        }\n    }\n}\n' \
       "$auth_host" "$cred_user" "$cred_pass" > auth.json
-    echo "ds: wrote auth.json for $auth_host from keychain (service ds-registry)"
+    echo "ds: wrote auth.json for $auth_host from secret store (service ds-registry)"
     if [ -d .git ] && ! git check-ignore -q auth.json 2>/dev/null; then
       echo "/auth.json" >> .gitignore
       echo "ds: added /auth.json to .gitignore"
@@ -139,12 +170,12 @@ case $tool in
           echo "ds: composer could not authenticate against $auth_host." >&2
           echo "ds: lando runs in its own container, outside the ds sandbox, so this" >&2
           echo "ds: project needs an auth.json." >&2
-          if security find-generic-password -s ds-registry -a "$auth_host" >/dev/null 2>&1; then
-            echo "ds: your keychain already holds a ds-registry entry for it - run:" >&2
+          if cred_lookup "$auth_host" >/dev/null 2>&1; then
+            echo "ds: your secret store already holds a ds-registry entry for it - run:" >&2
             echo "ds:   ds auth $auth_host" >&2
           else
-            echo "ds: stash the credentials in your keychain (value: username:password):" >&2
-            echo "ds:   security add-generic-password -U -s ds-registry -a $auth_host -w" >&2
+            echo "ds: stash the credentials in your secret store (value: username:password):" >&2
+            echo "ds:   $(cred_store_hint "$auth_host")" >&2
             echo "ds: then write this project's auth.json from it:" >&2
             echo "ds:   ds auth $auth_host" >&2
           fi
