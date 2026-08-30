@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "name": "dep-sandbox",
+    "version": "0.1.0",
+    "description": "Sandbox profile for dependency-mutating commands (npm/bun/uv/pip/composer install-update-require). Union of node/python/bun runtimes plus PHP composer paths, developer network allowlist plus packagist metadata, and a strict environment allow-list so exported host secrets never reach install scripts. Private registries follow the ds-registry convention: one keychain entry per host (service ds-registry, account = hostname, value = username:password) and one custom_credentials route here, so credentials are proxy-injected and never enter the sandbox."
+  },
+  "extends": "default",
+  "groups": {
+    "include": [
+      "node_runtime",
+      "bun_runtime",
+      "python_runtime",
+      "homebrew_macos"
+    ]
+  },
+  "workdir": {
+    "access": "readwrite"
+  },
+  "commands": {
+    "allow": ["npm", "pip", "composer", "bun", "uv"]
+  },
+  "filesystem": {
+    "allow": [
+      "$HOME/.composer",
+      "$XDG_CONFIG_HOME/composer",
+      "$XDG_CACHE_HOME/composer",
+      "$HOME/Library/Caches/composer",
+      "$HOME/.npm/_cacache",
+      "$HOME/.npm/_logs",
+      "$HOME/.npm/_update-notifier-last-checked",
+      "$HOME/.bun/install/cache",
+      "$XDG_CACHE_HOME/uv",
+      "$HOME/Library/Caches/pip",
+      "$XDG_CACHE_HOME/pip"
+    ]
+  },
+  "network": {
+    "network_profile": "developer",
+    "allow_domain": [
+      "repo.packagist.org",
+      "composer.fluxui.dev"
+    ],
+    "credentials": ["fluxui"],
+    "custom_credentials": {
+      "fluxui": {
+        "upstream": "https://composer.fluxui.dev",
+        "credential_key": "cmd://fluxui",
+        "inject_mode": "basic_auth",
+        "env_var": "DS_FLUXUI_TOKEN"
+      }
+    }
+  },
+  "credential_capture": {
+    "fluxui": {
+      "command": [
+        "/bin/sh",
+        "-c",
+        "security find-generic-password -s ds-registry -a \"$NONO_REQUEST_HOST\" -w"
+      ],
+      "timeout_secs": 10,
+      "cache_ttl_secs": 900
+    }
+  },
+  "environment": {
+    "allow_vars": [
+      "PATH",
+      "HOME",
+      "TERM",
+      "LANG",
+      "LC_*",
+      "TMPDIR",
+      "USER",
+      "SHELL",
+      "COLORTERM",
+      "NO_COLOR"
+    ]
+  }
+}

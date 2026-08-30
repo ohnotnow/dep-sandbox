@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ds - dependency sandbox
+#
+# Runs dependency-mutating package manager commands inside a nono sandbox so
+# install-time scripts cannot read your home directory, keychain, browser
+# data, or exported environment variables. Every other command is passed
+# straight through to the real tool, untouched.
+#
+# In a Lando project (.lando.yml present), composer commands defer to lando,
+# which already runs them in a container.
+
+usage() {
+  cat >&2 <<'EOF'
+usage: ds <tool> <args...>
+
+tools: npm, npx, bun, bunx, uv, pip, pip3, composer
+
+environment:
+  DS_PROFILE=<path>  override the nono profile (default: dep-sandbox.json
+                     next to the ds script)
+  DS_DRY_RUN=1       print the routing decision instead of running
+  DS_VERBOSE=1       show nono's banner and session summary
+EOF
+  exit 2
+}
+
+if [ $# -lt 1 ]; then
+  usage
+fi
+tool=$1
+shift
+
+resolve_script_dir() {
+  src=$0
+  while [ -L "$src" ]; do
+    src=$(readlink "$src")
+  done
+  cd "$(dirname "$src")" && pwd
+}
+
+profile=${DS_PROFILE:-$(resolve_script_dir)/dep-sandbox.json}
+
+sandbox=no
+case $tool in
+  auth)
+    # ds auth <registry-hostname>
+    # Writes ./auth.json for a private composer registry from the keychain
+    # (service ds-registry, account = hostname, value = username:password).
+    # Only ever runs when explicitly asked.
+    auth_host=${1:-}
+    if [ -z "$auth_host" ]; then
+      echo "usage: ds auth <registry-hostname>" >&2
+      exit 2
+    fi
+    if ! cred=$(security find-generic-password -s ds-registry -a "$auth_host" -w 2>/dev/null); then
+      echo "ds: no keychain entry for '$auth_host' (service ds-registry)." >&2
+      echo "ds: add one with (value format username:password):" >&2
+      echo "ds:   security add-generic-password -U -s ds-registry -a $auth_host -w" >&2
+      exit 1
+    fi
+    cred_user=${cred%%:*}
+    cred_pass=${cred#*:}
+    if [ -z "$cred_user" ] || [ -z "$cred_pass" ] || [ "$cred" = "$cred_user" ]; then
+      echo "ds: keychain entry for '$auth_host' is not in username:password format." >&2
+      exit 1
+    fi
+    printf '{\n    "http-basic": {\n        "%s": {\n            "username": "%s",\n            "password": "%s"\n        }\n    }\n}\n' \
+      "$auth_host" "$cred_user" "$cred_pass" > auth.json
+    echo "ds: wrote auth.json for $auth_host from keychain (service ds-registry)"
+    if [ -d .git ] && ! git check-ignore -q auth.json 2>/dev/null; then
+      echo "/auth.json" >> .gitignore
+      echo "ds: added /auth.json to .gitignore"
+    fi
+    exit 0
+    ;;
+  npm)
+    case ${1:-} in
+      install|i|add|ci|update|up|upgrade|uninstall|un|remove|rm|unlink|rebuild|exec)
+        sandbox=yes ;;
+      audit)
+        if [ "${2:-}" = "fix" ]; then sandbox=yes; fi ;;
+    esac
+    ;;
+  npx|bunx)
+    # download-and-execute is the whole threat; always sandboxed
+    sandbox=yes
+    ;;
+  bun)
+    case ${1:-} in
+      install|i|add|remove|rm|update|patch)
+        sandbox=yes ;;
+    esac
+    ;;
+  uv)
+    case ${1:-} in
+      add|remove|sync|lock)
+        sandbox=yes ;;
+      pip)
+        case ${2:-} in
+          install|uninstall|sync) sandbox=yes ;;
+        esac ;;
+      tool)
+        case ${2:-} in
+          install|upgrade) sandbox=yes ;;
+        esac ;;
+    esac
+    ;;
+  pip|pip3)
+    case ${1:-} in
+      install|uninstall|download|wheel)
+        sandbox=yes ;;
+    esac
+    ;;
+  composer)
+    case ${1:-} in
+      install|i|update|u|upgrade|require|r|remove|rm|create-project)
+        sandbox=yes ;;
+    esac
+    if [ "$sandbox" = yes ] && [ -f .lando.yml ]; then
+      if [ "${DS_DRY_RUN:-}" = 1 ]; then
+        echo "ds: defer to lando: lando composer $*"
+        exit 0
+      fi
+      # Lando's container has no nono proxy, so private registries need a
+      # per-project auth.json there. Rather than guess up front, let
+      # composer fail and read the hostname out of its 401 message.
+      lando_out=$(mktemp "${TMPDIR:-/tmp}/ds-lando.XXXXXX")
+      set +e
+      lando composer "$@" 2>&1 | tee "$lando_out"
+      lando_status=${PIPESTATUS[0]}
+      set -e
+      if [ "$lando_status" -ne 0 ] && grep -q "URL required authentication" "$lando_out"; then
+        auth_host=$(grep -o "https://[^']*' URL required authentication" "$lando_out" \
+          | head -1 | sed -E "s|https://([^/']+).*|\1|")
+        if [ -n "$auth_host" ]; then
+          echo "" >&2
+          echo "ds: composer could not authenticate against $auth_host." >&2
+          echo "ds: lando runs in its own container, outside the ds sandbox, so this" >&2
+          echo "ds: project needs an auth.json." >&2
+          if security find-generic-password -s ds-registry -a "$auth_host" >/dev/null 2>&1; then
+            echo "ds: your keychain already holds a ds-registry entry for it - run:" >&2
+            echo "ds:   ds auth $auth_host" >&2
+          else
+            echo "ds: stash the credentials in your keychain (value: username:password):" >&2
+            echo "ds:   security add-generic-password -U -s ds-registry -a $auth_host -w" >&2
+            echo "ds: then write this project's auth.json from it:" >&2
+            echo "ds:   ds auth $auth_host" >&2
+          fi
+        fi
+      fi
+      rm -f "$lando_out"
+      exit "$lando_status"
+    fi
+    ;;
+  *)
+    echo "ds: unsupported tool '$tool'" >&2
+    usage
+    ;;
+esac
+
+if [ "$sandbox" = no ]; then
+  if [ "${DS_DRY_RUN:-}" = 1 ]; then
+    echo "ds: passthrough: $tool $*"
+    exit 0
+  fi
+  exec "$tool" "$@"
+fi
+
+nono_flags=(run --profile "$profile" --allow .)
+if [ "${DS_VERBOSE:-}" != 1 ]; then
+  nono_flags+=(--silent)
+fi
+
+if [ "${DS_DRY_RUN:-}" = 1 ]; then
+  echo "ds: sandbox: nono ${nono_flags[*]} -- $tool $*"
+  exit 0
+fi
+
+exec nono "${nono_flags[@]}" -- "$tool" "$@"
