@@ -1,12 +1,14 @@
 # dep-sandbox
 
-`ds` is a small bash wrapper that runs the risky half of your package manager commands inside a macOS sandbox, so a malicious install script can't rifle through your home directory, your keychain, or your environment variables.
+`ds` is a small bash wrapper that runs the risky half of your package manager commands inside a sandbox, so a malicious install script can't rifle through your home directory, your keychain, or your environment variables.
 
 ## Why
 
 Supply chain attacks on npm and friends mostly do the same thing: a compromised package ships an install-time script that grabs `~/.ssh`, browser data, shell history and any API keys sitting in your environment, then posts them somewhere unpleasant. Package managers are adding good protections (cooldown windows, script approval, registry malware scanning), but the blunt problem remains that `npm install` runs other people's code with your full user privileges.
 
 `ds` narrows that. Install-time code still runs, but inside a [nono](https://nono.sh) sandbox.
+
+A note on platforms: this was built and tested on macOS, but nothing about the design is Mac-only. nono itself supports Linux, and the only macOS-specific pieces here are the keychain lookups, which nono's [credential injection](https://nono.sh/docs/cli/features/credential-injection#linux) can source from other secret stores. We just don't have a Linux box to test on, so a tested PR would be very welcome.
 
 ## What it does
 
@@ -22,11 +24,10 @@ Inside the sandbox, the profile:
 - allows writes only to the project directory and the package managers' own cache directories
 - routes network traffic through nono's filtering proxy
 
-Installs produce normal macOS artefacts. Native node modules, wheels and virtualenvs all work on the host afterwards.
+Installs run natively (no Docker, no VM), so native node modules, wheels and virtualenvs all work on the host afterwards.
 
 ## Prerequisites
 
-- macOS
 - [nono](https://nono.sh) (`brew install nono`), built and tested against version 0.74
 - whichever package managers you actually use (npm, bun, uv, pip, composer)
 - [Lando](https://lando.dev/), only if you use it for local development
@@ -77,6 +78,8 @@ security add-generic-password -U -s ds-registry -a composer.fluxui.dev -w "${FLU
 ```
 
 Never paste the literal values inline, those do land in history. Once the keychain entry exists, delete the old `export` lines from your shell config.
+
+On Linux there is no `security` command; swap the lookup in the profile's `credential_capture` block for your secret store of choice (`secret-tool`, `pass`, or any of the backends in nono's [credential injection docs](https://nono.sh/docs/cli/features/credential-injection#linux)).
 
 Each registry also needs a route in `dep-sandbox.json`. The repo ships with `composer.fluxui.dev` (the [FluxUI](https://fluxui.dev/) private registry) as a worked example; copy the `custom_credentials` block and the matching `credential_capture` entry, change the hostname, and add the hostname to `allow_domain`. The capture command reads the hostname from `$NONO_REQUEST_HOST`, so it works unchanged for any registry that follows the keychain convention.
 
