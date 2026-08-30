@@ -12,7 +12,7 @@ Package managers are adding good protections (cooldown windows, script approval,
 
 `ds` narrows that by running things like `npm install` or `composer require` inside a [nono](https://nono.sh) sandbox with a stripped back environment and access limited to your project and the key directories the tool needs (eg, `~/.cache/uv/`).
 
-A note on platforms: built on macOS, and tested on Ubuntu 24.04 using `secret-tool` for private package registries. The one hard Linux requirement is a kernel with [Landlock](https://landlock.io/) enabled, which any regular Debian or Ubuntu has. Raspberry Pi OS, sadly, does not, so no `ds` on your rpi.
+A note on platforms: built on macOS, and tested on Ubuntu 24.04 and Fedora 44 (SELinux enforcing, no drama) using `secret-tool` for private package registries. The one hard Linux requirement is a kernel with [Landlock](https://landlock.io/) enabled, which any regular Debian, Ubuntu or Fedora has. Raspberry Pi OS, sadly, does not, so no `ds` on your rpi.
 
 ## What it does
 
@@ -32,9 +32,9 @@ Installs run natively (no Docker, no VM), so native node modules, wheels and vir
 
 ## Prerequisites
 
-- [nono](https://nono.sh) (`brew install nono` on macOS, a `.deb` on Linux), built and tested against version 0.74
+- [nono](https://nono.sh) (`brew install nono` on macOS; on Linux see nono's [installation docs](https://nono.sh/docs/cli/getting_started/installation) - on Fedora the [manual rpm](https://nono.sh/docs/cli/getting_started/installation#manual-rpm-rhel/opensuse-and-fallback) route worked where the COPR one didn't, as of 0.74), built and tested against version 0.74
 - whichever package managers you actually use (npm, bun, uv, pip, composer)
-- on Linux (debian/ubuntu at least), for private registries only: `libsecret-tools` (for `secret-tool`) and `gnome-keyring`
+- on Linux, for private registries only: `secret-tool` (debian/ubuntu package `libsecret-tools`, included in Fedora's `libsecret`) and `gnome-keyring`
 
 ## Getting started
 
@@ -89,7 +89,7 @@ On Linux the same entry goes in the Secret Service via `secret-tool`, which prom
 secret-tool store --label="ds-registry composer.fluxui.dev" service ds-registry account composer.fluxui.dev
 ```
 
-Desktop Linux normally has gnome-keyring running already; on a headless box you'll need to unlock it first (`gnome-keyring-daemon --replace --unlock --components=secrets`, password on stdin). `ds` understands MacOS and debian-alikes using `secret-tool`. If you'd rather use `pass` or one of the other backends in nono's [credential injection docs](https://nono.sh/docs/cli/features/credential-injection#linux), the `cred_lookup` function in `ds` is the one place to change.
+Desktop Linux normally has gnome-keyring running already; on a headless box you'll need to unlock it first (`gnome-keyring-daemon --replace --unlock --components=secrets`, password on stdin). `ds` understands the MacOS keychain and any Linux with `secret-tool` (debian-alikes and Fedora both tested). If you'd rather use `pass` or one of the other backends in nono's [credential injection docs](https://nono.sh/docs/cli/features/credential-injection#linux), the `cred_lookup` function in `ds` is the one place to change.
 
 Each registry also needs a route in `dep-sandbox.json`. The repo ships with `composer.fluxui.dev` (the [FluxUI](https://fluxui.dev/) private registry) as a worked example; copy the `custom_credentials` block and the matching `credential_capture` entry, change the hostname, and add the hostname to `allow_domain`. `ds _cred` reads the hostname from `$NONO_REQUEST_HOST`, so it works unchanged for any registry that follows the `ds-registry` convention.
 
