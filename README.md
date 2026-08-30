@@ -44,7 +44,7 @@ Then use your package managers as normal, with `ds` in front:
 
 ```bash
 ds npm install left-pad
-ds composer require some/package
+ds composer require monolog/monolog
 ds uv add requests
 ds npm run dev        # passthrough, no sandbox
 ```
