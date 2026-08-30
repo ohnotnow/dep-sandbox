@@ -100,7 +100,7 @@ which writes the project's `auth.json` from the same keychain entry, and adds it
 
 - The project directory is the accepted blast radius. A malicious script can still tamper with the mounted tree, poison your lockfile, or read anything in the project.
 - The domain allowlist is a "better than nothing" hook. Registries and GitHub have to be reachable for installs to work, but if you are worried about someone hacking the registry itself then take stricter measures.
-- Wrapper discipline is on you. `ds npm install` is sandboxed; a bare `npm install` typed on autopilot is not.  You could try a shell alias of `alias npm="ds npm "` - ymmv.
+- Wrapper discipline is on you. `ds npm install` is sandboxed; a bare `npm install` typed on autopilot is not.
 - nono itself is pre-release. Flags and profile fields change between versions, so expect the occasional breakage until it settles.
 
 ## Contributing
