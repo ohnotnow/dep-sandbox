@@ -13,9 +13,9 @@ Package managers are adding good protections (cooldown windows, script approval,
 `ds` narrows that by running things like `npm install` or `composer require` inside a [nono](https://nono.sh) sandbox with a stripped back environment and access limited to your project and the key directories the tool needs (eg, `~/.cache/uv/`).
 
 ```sh
-# probably hacked
+# roll the dice and hope for the best
 npm install some-random-package
-# probably not hacked
+# or be fairly sure no hacked script will grab your secrets
 ds npm install some-random-package
 ```
 
