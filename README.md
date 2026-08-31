@@ -12,7 +12,16 @@ Package managers are adding good protections (cooldown windows, script approval,
 
 `ds` narrows that by running things like `npm install` or `composer require` inside a [nono](https://nono.sh) sandbox with a stripped back environment and access limited to your project and the key directories the tool needs (eg, `~/.cache/uv/`).
 
+```sh
+# probably hacked
+npm install some-random-package
+# probably not hacked
+ds npm install some-random-package
+```
+
 A note on platforms: built on macOS, and tested on Ubuntu 24.04 and Fedora 44 (SELinux enforcing, no drama) using `secret-tool` for private package registries. The one hard Linux requirement is a kernel with [Landlock](https://landlock.io/) enabled, which any regular Debian, Ubuntu or Fedora has. Raspberry Pi OS, sadly, does not, so no `ds` on your rpi.
+
+See also [nono-profile-builder](https://github.com/ohnotnow/nono-profile-builder/) that uses `nono` and a coding agent to build a sandbox profile for your whole project.
 
 ## What it does
 
